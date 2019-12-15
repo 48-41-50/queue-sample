@@ -1,0 +1,25 @@
+version: "3"
+services:
+    db: 
+        image: postgres:12
+        container_name: postgres-guillotina
+        environment:
+            POSTGRES_USER: guillotina
+            POSTGRES_DB: guillotina
+        volumes:
+            - ./init:/docker-entrypoint-initdb.d
+        ports:
+            - "5432:5432"
+    
+#    g:
+#        image: guillotina/guillotina:latest
+#        container_name: guillotina
+#        depends_on: 
+#            - db
+#        ports:
+#            - "127.0.0.1:8080:8080"
+#        command:
+#            - g
+#            - -c
+#            - '{"databases": [{"db": {"storage": "postgresql", "dsn": "postgres://guillotina:@db/guillotina"}}], "root_user": {"password": "root"}}'
+

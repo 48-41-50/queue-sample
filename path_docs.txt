@@ -1,0 +1,9 @@
+Paths:
+
+/kafka # base
+/kafka/topics/ # list topics
+/kafka/topics/add # add a topic
+/kafka/topics/<topic>?pagesize # show messages in topic pagesize defaults to last 10
+/kafka/topics/<topic>/subscribe?<token> # subscribe to a topic
+/kafka/topics/<topic>/<token>/get # get next mesage for token from topic
+/kafka/topics/<topic>/<token>/put # put a message on the  topic
