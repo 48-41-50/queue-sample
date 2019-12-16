@@ -2,10 +2,10 @@ version: "3"
 services:
     db: 
         image: postgres:12
-        container_name: postgres-guillotina
+        container_name: postgres-queues
         environment:
-            POSTGRES_USER: guillotina
-            POSTGRES_DB: guillotina
+            POSTGRES_USER: queues
+            POSTGRES_DB: queues
         volumes:
             - ./init:/docker-entrypoint-initdb.d
         ports:
