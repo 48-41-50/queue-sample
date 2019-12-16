@@ -11,6 +11,21 @@ services:
         ports:
             - "5432:5432"
     
+    http:
+        build: 
+            context: ./http
+        container_name: http-queues
+        ports:
+            - "8080:8080"
+        depends_on: 
+            - db
+        volumes:
+            - ./http/server:/opt/server
+    
+#    queue-publish:
+    
+#    queue-subscribe:
+    
 #    g:
 #        image: guillotina/guillotina:latest
 #        container_name: guillotina
