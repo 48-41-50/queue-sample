@@ -1,24 +1,25 @@
 \echo Creating table "topic"...
 create table topic
 (
-    topic       text primary key check (topic <> '')
-    description text not null check ( description <> '' );
+    topic       text primary key check (topic <> ''),
+    description text not null check ( description <> '' )
 );
 
 comment on table topic is 'Define a topic';
-comment on column topic.name is 'Name of the topic';
+comment on column topic.topic is 'Name of the topic';
+comment on column topic.description is 'Description of the topic';
 
 
 \echo Creating table "topic_message"...
 create table topic_message
 (
     id          bigserial primary key,
-    topic       int not null check (topic <> '') references topic (topic) on delete cascade on update cascade deferrable initially deferred,
+    topic       text not null check (topic <> '') references topic (topic) on delete cascade on update cascade deferrable initially deferred,
     _offset     bigint not null check (_offset > 0),
     message     text not null
 );
 
-create unique index topic_message_topic_id_offset_desc on topic_message (topic_id, _offset desc);
+create unique index topic_message_topic_offset_desc on topic_message (topic, _offset desc);
 
 comment on table topic_message is 'Messages posted to a topic';
 comment on column topic_message.topic is 'Reference to the topic to which this message applies. Part 1 of the primary key';
@@ -36,17 +37,17 @@ create table topic_subscriber
 
 comment on table topic_subscriber is 'Define a topic subscriber';
 comment on column topic_subscriber.id is 'Primary key for a topic subscriber';
-comment on column topic_subscriber.topic_id is 'Identify the subscribed topic. Part 1 of foreign key.';
-comment on column topic_subscriber._offset is 'Last processed offset of subscribed topic. Part 2 of foreign key.';
+comment on column topic_subscriber.topic is 'Foreign key eference to the subscribed topic.';
+comment on column topic_subscriber._offset is 'Last processed offset of subscribed topic.';
 
 
 \echo Creating function create topic...
-create or replace function topic_create( topic text, description text ) returning text as 
+create or replace function topic_create( p_topic text, p_description text ) returns text as 
 $BODY$
 declare
     v_topic text := null::text;
 begin
-    insert into topic (topic, description) values (topic, description) returning topic into v_topic;
+    insert into topic (topic, description) values (p_topic, p_description) returning topic into v_topic;
     
     return v_topic;
 end;
@@ -68,8 +69,8 @@ $BODY$
 language plpgsql;
 
 
-\echo Creating save_message procedure...
-create or replace procedure save_message(topic text, message text) as $BODY$
+\echo Creating save_message function...
+create or replace function save_message(topic text, message text) returns int as $BODY$
 declare
     v_offset int := null::int;
 begin
@@ -78,14 +79,15 @@ begin
                where tm.topic = $$ || quote_literal(topic) || $$
                  and tm._offset = (select coalesce(max(tm1._offset), 0)
                                      from "topic_message" tm1
-                                    where tm1.topic_id = $$ || quote_literal(v_topic_id) || $$)
+                                    where tm1.topic = $$ || quote_literal(topic) || $$)
                  for update;$$
        into v_offset;
 
     insert into "topic_message" (topic, _offset, message)
-    values (topic, coalesce(v_offset, 0) + 1, quote_literal(message));
+    values (topic, coalesce(v_offset, 0) + 1, quote_literal(message))
+    returning _offset into v_offset;
     
-    commit;
+    return v_offset;
 end;
 $BODY$
 language plpgsql;
@@ -142,12 +144,9 @@ begin
     
     return query execute $$select tm.*
                              from "topic_message" tm
-                             join "topic" t
-                               on t.id = tm.topic_id
                              join "topic_subscriber" ts
-                               on ts.topic_id = t.id
+                               on ts.topic = tm.topic
                             where ts.id = $$ || quote_literal(subscriber_id) || $$
-                              and t.name = $$ || quote_literal(topic) || $$
                               and tm._offset > ts._offset
                             limit $$ || quote_literal(num_messages) || $$;$$;
 end;
@@ -177,9 +176,7 @@ begin
                 from (
                        select ts1.id
                          from "topic_subscriber" ts1
-                         join "topic" t
-                           on t.id = ts1.topic_id
-                        where t.name = $$ || quote_literal(topic) || $$ 
+                        where ts1.topic = $$ || quote_literal(topic) || $$ 
                           for update
                      ) as targets
                where ts.id = targets.id;$$;

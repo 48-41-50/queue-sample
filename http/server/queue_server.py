@@ -11,6 +11,7 @@ from urllib.parse import urlparse, parse_qs, unquote_plus
 import os
 from psycopg2 import connect as db_connect
 from psycopg2.extras import RealDictCursor
+import psycopg2.errors
 import json
 
 from IPython import embed
@@ -21,7 +22,7 @@ DB_URI = os.environ.get('DB_URI', 'postgresql://queues@db:5432/queues')
 
 
 class QRequestHandler(BaseHTTPRequestHandler):
-    def _set_response(self, status=HTTPStatus.OK headers={'Content-type': 'text/json'}):
+    def _set_response(self, status=HTTPStatus.OK, headers={'Content-type': 'text/json'}):
         self.send_response(status)
         for pair in headers.items():
             self.send_header(*pair)
@@ -30,7 +31,11 @@ class QRequestHandler(BaseHTTPRequestHandler):
     def handle_route(self):
         parsed_path = urlparse(self.path)
         self._query_params = parse_qs(parsed_path.query)
-        route = self._parsed_path.path.split('/')[-1:]
+        route = parsed_path.path.split('/')[-1:]
+        if route:
+            route = route[0]
+        else:
+            route = '___no_method_here'
         route_method = 'do_' + route
         if not hasattr(self, route_method):
             self.send_error(
@@ -49,47 +54,95 @@ class QRequestHandler(BaseHTTPRequestHandler):
         new_topic = self._query_params.get('topic')
         new_topic_desc = self._query_params.get('description')
         if new_topic and new_topic_desc:
+            new_topic = new_topic[0]
+            new_topic_desc = new_topic_desc[0]
             with db_connect(DB_URI, cursor_factory=RealDictCursor) as conn:
                 with conn.cursor() as cur:
-                    cur.execute("""select topic_create(%s, %s);""", (new_topic, new_topic_desc))
-                    res = cur.fetchone()
+                    try:
+                        cur.execute("""select topic_create(%s, %s);""", (new_topic, new_topic_desc))
+                        res = cur.fetchone()
+                    except psycopg2.errors.IntegrityError as e:
+                        conn.rollback()
+                        self.send_error(HTTPStatus.UNPROCESSABLE_ENTITY, f'The topic "{new_topic}" already exists')
+
             if res.get('topic_create') == new_topic:
+                logging.info(f"Created topic '{new_topic}'")
                 self._set_response()
-                self.wfile.write(json.dumps({'topic': new_topic}))
+                self.wfile.write(json.dumps({'message': f'Topic "{new_topic}" created'}).encode('utf-8'))
             else:
+                logging.error(f"ERROR: Topic '{new_topic}' creation failed")
                 self.send_error(HTTPStatus.UNPROCESSABLE_ENTITY)
-        else;
+        else:
+            logging.error("ERROR: /topic route missing parameters for topic or description")
             self.send_error(HTTPStatus.UNPROCESSABLE_ENTITY)
 
     # delete topic route: /topic_delete?topic=<topic>
     def do_topic_delete(self):
         target_topic = self._query_params.get('topic')
         if target_topic:
+            target_topic = target_topic[0]
+            logging.info(f"Deleting topic {target_topic}")
             with db_connect(DB_URI, cursor_factory=RealDictCursor) as conn:
                 with conn.cursor() as cur:
-                    cur.execute("""call topic_delete(%s);""", (target_topic))
+                    cur.execute("""call topic_delete(%s);""", (target_topic,))
             self._set_response()
-            self.wfile.write(json.dumps({'message': f'Topic "{target_topic} deleted'}))
+            self.wfile.write(json.dumps({'message': f'Topic "{target_topic}" deleted'}).encode('utf-8'))
         else:
             self.send_error(HTTPStatus.UNPROCESSABLE_ENTITY)
     
     # save message route: /publish?topic=<topic>&message=<message> 
-    def do_save_message(self):
+    def do_publish(self):
         target_topic = self._query_params.get('topic')
         message = self._query_params.get('message')
-        if target_topic and message is not None
-            #message = unquote_plus(message)
+        if target_topic and message is not None:
+            target_topic = target_topic[0]
+            message = message[0]
+            logging.info(f'MESSAGE = [{message}]')
             with db_connect(DB_URI, cursor_factory=RealDictCursor) as conn:
-                with conn.cursor() as cur:
-                    cur.execute("""call save_message(%s, %s);""", (target_topic, message))
-            self._set_response()
-            self.wfile.write(json.dumps({'message': f'Saved message to topic "{target_topic}'}))
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute("""select save_message(%s, %s);""", (target_topic, message))
+                        res = cur.fetchone()
+                except psycopg2.errors.IntegrityError as e:
+                    conn.rollback()
+                    self.send_error(HTTPStatus.UNPROCESSABLE_ENTITY, f'Topic "{target_topic}" does not exist')
+                    return
+                        
+            if res is not None and res['save_message'] is not None:
+                self._set_response()
+                self.wfile.write(json.dumps({'message': f'Saved message to topic "{target_topic}" at offset {res["save_message"]}'}).encode('utf-8'))
+            else:
+                self.send_error(HTTPStatus.UNPROCESSABLE_ENTITY)
         else:
             self.send_error(HTTPStatus.UNPROCESSABLE_ENTITY)
     
     # subscribe route: /subscribe?topic=<topic>
     def do_subscribe(self):
-        pass
+        res = {}
+        new_topic = self._query_params.get('topic')
+        new_topic_desc = self._query_params.get('description')
+        if new_topic and new_topic_desc:
+            new_topic = new_topic[0]
+            new_topic_desc = new_topic_desc[0]
+            with db_connect(DB_URI, cursor_factory=RealDictCursor) as conn:
+                with conn.cursor() as cur:
+                    try:
+                        cur.execute("""select topic_create(%s, %s);""", (new_topic, new_topic_desc))
+                        res = cur.fetchone()
+                    except psycopg2.errors.IntegrityError as e:
+                        conn.rollback()
+                        self.send_error(HTTPStatus.UNPROCESSABLE_ENTITY, f'The topic "{new_topic}" already exists')
+
+            if res.get('topic_create') == new_topic:
+                logging.info(f"Created topic '{new_topic}'")
+                self._set_response()
+                self.wfile.write(json.dumps({'message': f'Topic "{new_topic}" created'}).encode('utf-8'))
+            else:
+                logging.error(f"ERROR: Topic '{new_topic}' creation failed")
+                self.send_error(HTTPStatus.UNPROCESSABLE_ENTITY)
+        else:
+            logging.error("ERROR: /topic route missing parameters for topic or description")
+            self.send_error(HTTPStatus.UNPROCESSABLE_ENTITY)
     
     # unsubscribe route: /unsubscribe?subscriber_id=<id>
     def do_unsubscribe(self):
