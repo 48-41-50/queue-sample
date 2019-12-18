@@ -2,7 +2,7 @@ version: "3"
 services:
     db: 
         image: postgres:12
-        container_name: postgres-queues
+        container_name: queues-db
         environment:
             POSTGRES_USER: queues
             POSTGRES_DB: queues
@@ -11,12 +11,12 @@ services:
         ports:
             - "5432:5432"
     
-    http:
+    server:
         build: 
             context: ./http
-        container_name: http-queues
+        container_name: queues-server
         ports:
-            - "8080:8080"
+            - "8888:8888"
         depends_on: 
             - db
         volumes:
