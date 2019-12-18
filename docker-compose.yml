@@ -20,21 +20,6 @@ services:
         depends_on: 
             - db
         volumes:
-            - ./http/server:/opt/server
+            - ./out:/opt/queues
+        command: ["python3", "/opt/queue/queue_server.py"]
     
-#    queue-publish:
-    
-#    queue-subscribe:
-    
-#    g:
-#        image: guillotina/guillotina:latest
-#        container_name: guillotina
-#        depends_on: 
-#            - db
-#        ports:
-#            - "127.0.0.1:8080:8080"
-#        command:
-#            - g
-#            - -c
-#            - '{"databases": [{"db": {"storage": "postgresql", "dsn": "postgres://guillotina:@db/guillotina"}}], "root_user": {"password": "root"}}'
-
