@@ -26,7 +26,7 @@ class QPublisher:
         logging_params = {'format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                           'level': logging.INFO}
         if log_to_file:
-            logging_params['filename'] = f'publisher_{self.id}.txt'
+            logging_params['filename'] = f'publisher_{self.id}.log'
             logging_params['filemode'] = 'w'
         else:
             logging_params['stream'] = sys.stderr

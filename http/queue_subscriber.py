@@ -26,7 +26,7 @@ class QSubscriber:
         self.exit_after = exit_after
         self.subscribe()
         self.processed = set()
-        filename = f'{self.topic}_subscriber_{self.subscriber_id}'
+        filename = f'{self.topic}_subscriber_{self.subscriber_id}.log'
         logging.basicConfig(filename=filename,
                             filemode='w',
                             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -78,6 +78,9 @@ class QSubscriber:
         self.ack_message(message_data['_offset'])
     
     def consume(self):
+        """
+        Loop to consume messages, sleep between calls by a specified amount and unsubscribe and exit after a certain number of detected empty responses
+        """
         tries = 0
         try:
             while tries < self.exit_after:
